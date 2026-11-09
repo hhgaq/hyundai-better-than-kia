@@ -3,6 +3,12 @@
 운전자의 **브레이크, 가속(엑셀), 방향지시등(깜빡이)** 입력을 실시간으로 인식해 주행 기록으로 남기는 Pleos Connect 차량용 앱입니다.
 현대자동차그룹 차량용 앱 개발 공모전 제출용 MVP입니다.
 
+## 제출물 (mvp 브랜치)
+
+- 소스 코드: 이 저장소 전체
+- APK: [`apk/`](apk/) 폴더의 `drive-log-v0.1.0-debug.apk`. `mvp` 브랜치에 푸시할 때마다 GitHub Actions가 테스트를 돌리고 빌드해서 자동으로 커밋합니다. `apk/SHA256SUMS.txt`로 파일이 맞는지 확인할 수 있습니다.
+- 설치: Pleos Connect 에뮬레이터를 켠 상태에서 `adb install apk/drive-log-v0.1.0-debug.apk`
+
 ## 기능
 
 - 실시간 상태 표시: 속도, 기어, 브레이크, 좌/우 깜빡이, 가속 여부
