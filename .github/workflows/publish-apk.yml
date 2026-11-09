@@ -1,0 +1,44 @@
+name: Publish APK to mvp branch
+
+# mvp 브랜치에 푸시하면 APK를 빌드해서 apk/ 폴더에 커밋한다.
+# 제출 규정: APK는 단독이 아니라 소스 코드와 함께 GitHub 저장소에 올려야 한다.
+on:
+  push:
+    branches: [mvp]
+    paths-ignore:
+      - "apk/**"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Unit tests
+        run: ./gradlew --no-daemon testDebugUnitTest
+      - name: Build debug APK
+        run: ./gradlew --no-daemon assembleDebug
+      - name: Commit APK
+        run: |
+          VERSION=$(grep -oP 'versionName = "\K[^"]+' app/build.gradle.kts)
+          mkdir -p apk
+          rm -f apk/*.apk
+          cp app/build/outputs/apk/debug/app-debug.apk "apk/drive-log-v${VERSION}-debug.apk"
+          ( cd apk && sha256sum *.apk > SHA256SUMS.txt )
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add apk
+          if git diff --cached --quiet; then
+            echo "APK 변경 없음"
+          else
+            git commit -m "APK 빌드 v${VERSION} (${GITHUB_SHA::7})"
+            git push
+          fi
