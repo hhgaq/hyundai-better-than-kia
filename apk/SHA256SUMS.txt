@@ -1,1 +1,1 @@
-5293e1effbec1018a1ef0a89812ddba9e58c94fc31ab3a0c1730c98450a462b7  drive-log-v0.1.0-debug.apk
+160372e7edd799f17a9b12f2c9c89eb673de6df87bf3621a517ab09cd5174916  drive-log-v0.1.0-debug.apk
