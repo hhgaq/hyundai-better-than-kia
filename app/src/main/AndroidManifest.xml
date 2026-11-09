@@ -13,6 +13,19 @@
     <!-- GEAR_SELECTION, ACCELERATOR_PEDAL_COMPRESSION_PERCENTAGE (Android 16+) -->
     <uses-permission android:name="android.car.permission.CAR_POWERTRAIN" />
 
+    <!-- 차량(Android Automotive) 전용 앱 -->
+    <uses-feature
+        android:name="android.hardware.type.automotive"
+        android:required="true" />
+
+    <!-- CSV 공유: 받을 앱이 있는지 확인 (Android 11+ 패키지 가시성) -->
+    <queries>
+        <intent>
+            <action android:name="android.intent.action.SEND" />
+            <data android:mimeType="text/plain" />
+        </intent>
+    </queries>
+
     <application
         android:name=".DriveLogApp"
         android:allowBackup="false"
@@ -27,6 +40,11 @@
             android:name=".MainActivity"
             android:exported="true"
             android:launchMode="singleTask">
+            <!-- 주행 중에도 화면이 가려지지 않도록 주의 분산 최적화(DO) 액티비티로 표시.
+                 주행 중에는 큰 상태 표시만 보여주고 목록은 정차 때만 보여준다. -->
+            <meta-data
+                android:name="distractionOptimized"
+                android:value="true" />
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />

@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -58,7 +59,11 @@ import java.util.Date
 import java.util.Locale
 
 @Composable
-fun DriveLogScreen(repository: DriveRepository, onShareCsv: (Long) -> Unit) {
+fun DriveLogScreen(
+    repository: DriveRepository,
+    onShareCsv: (Long) -> Unit,
+    onOpenPermissionSettings: () -> Unit,
+) {
     val live by repository.live.collectAsStateWithLifecycle()
     val events by repository.events.collectAsStateWithLifecycle()
     val summary by repository.summary.collectAsStateWithLifecycle()
@@ -66,6 +71,8 @@ fun DriveLogScreen(repository: DriveRepository, onShareCsv: (Long) -> Unit) {
     val demoRunning by repository.demoRunning.collectAsStateWithLifecycle()
     val signals by repository.signals.collectAsStateWithLifecycle()
     val trips by repository.trips.collectAsStateWithLifecycle()
+    // 주행 중(5 km/h 초과)에는 목록 대신 큰 요약만 보여서 운전 중 주의 분산을 줄인다
+    val driving = (live.speedKmh ?: 0f) > DRIVING_KMH
 
     Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
         Row(Modifier.fillMaxSize().padding(20.dp), horizontalArrangement = Arrangement.spacedBy(20.dp)) {
@@ -76,6 +83,7 @@ fun DriveLogScreen(repository: DriveRepository, onShareCsv: (Long) -> Unit) {
                 signals = signals,
                 onToggleRecord = { if (recording) repository.stopTrip() else repository.startTrip() },
                 onDemo = { if (demoRunning) repository.stopDemo() else repository.startDemo() },
+                onSignalClick = { _, status -> if (status == "권한 필요") onOpenPermissionSettings() },
                 modifier = Modifier.weight(0.42f).fillMaxHeight(),
             )
             LogPanel(
@@ -84,6 +92,7 @@ fun DriveLogScreen(repository: DriveRepository, onShareCsv: (Long) -> Unit) {
                 summary = summary,
                 recording = recording,
                 trips = trips,
+                driving = driving,
                 onShareCsv = onShareCsv,
                 modifier = Modifier.weight(0.58f).fillMaxHeight(),
             )
@@ -101,6 +110,7 @@ private fun LivePanel(
     signals: Map<String, String>,
     onToggleRecord: () -> Unit,
     onDemo: () -> Unit,
+    onSignalClick: (String, String) -> Unit,
     modifier: Modifier,
 ) {
     Column(modifier, verticalArrangement = Arrangement.spacedBy(14.dp)) {
@@ -140,21 +150,30 @@ private fun LivePanel(
                 colors = ButtonDefaults.buttonColors(
                     containerColor = if (recording) DriveColors.Brake else MaterialTheme.colorScheme.primary,
                 ),
-                modifier = Modifier.weight(1f).height(56.dp),
-            ) { Text(if (recording) "기록 종료" else "기록 시작", fontSize = 18.sp) }
-            OutlinedButton(onClick = onDemo, modifier = Modifier.weight(1f).height(56.dp)) {
-                Text(if (demoRunning) "가상 주행 중지" else "가상 주행", fontSize = 18.sp)
+                modifier = Modifier.weight(1f).height(TOUCH_HEIGHT),
+            ) { Text(if (recording) "기록 종료" else "기록 시작", fontSize = 22.sp) }
+            OutlinedButton(onClick = onDemo, modifier = Modifier.weight(1f).height(TOUCH_HEIGHT)) {
+                Text(if (demoRunning) "가상 주행 중지" else "가상 주행", fontSize = 22.sp)
             }
         }
 
         Spacer(Modifier.weight(1f))
-        Text("신호 연결", color = DriveColors.Muted, fontSize = 13.sp)
+        Text("신호 연결", color = DriveColors.Muted, fontSize = 16.sp)
         signals.forEach { (name, status) ->
-            Row {
-                Text(name, fontSize = 13.sp, modifier = Modifier.width(80.dp))
+            val needsAction = status == "권한 필요"
+            Row(
+                Modifier.then(if (needsAction) Modifier.clickable { onSignalClick(name, status) } else Modifier)
+                    .padding(vertical = 2.dp)
+            ) {
+                Text(name, fontSize = 16.sp, modifier = Modifier.width(96.dp))
                 Text(
-                    status, fontSize = 13.sp,
-                    color = if (status == "수신 중") DriveColors.Accel else DriveColors.Muted,
+                    if (needsAction) "권한 필요 (눌러서 허용)" else status,
+                    fontSize = 16.sp,
+                    color = when {
+                        status == "수신 중" -> DriveColors.Accel
+                        needsAction -> DriveColors.Turn
+                        else -> DriveColors.Muted
+                    },
                 )
             }
         }
@@ -170,8 +189,8 @@ private fun SignalTile(icon: String, label: String, active: Boolean, color: Colo
             .padding(vertical = 14.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        Text(icon, fontSize = 26.sp, color = if (active) Color.White else DriveColors.Muted)
-        Text(label, fontSize = 15.sp, color = if (active) Color.White else DriveColors.Muted)
+        Text(icon, fontSize = 30.sp, color = if (active) Color.White else DriveColors.Muted)
+        Text(label, fontSize = 18.sp, color = if (active) Color.White else DriveColors.Muted)
     }
 }
 
@@ -184,17 +203,28 @@ private fun LogPanel(
     summary: TripSummary?,
     recording: Boolean,
     trips: List<TripSummary>,
+    driving: Boolean,
     onShareCsv: (Long) -> Unit,
     modifier: Modifier,
 ) {
+    if (driving) {
+        DrivingPanel(summary, modifier)
+        return
+    }
     var tab by rememberSaveable { mutableIntStateOf(0) }
     var openedTrip by remember { mutableStateOf<TripSummary?>(null) }
 
     Surface(modifier, shape = RoundedCornerShape(20.dp), color = DriveColors.Panel) {
         Column {
             TabRow(selectedTabIndex = tab, containerColor = DriveColors.Panel) {
-                Tab(selected = tab == 0, onClick = { tab = 0 }, text = { Text(if (recording) "● 이번 주행" else "이번 주행") })
-                Tab(selected = tab == 1, onClick = { tab = 1; openedTrip = null }, text = { Text("지난 기록 ${trips.size}") })
+                Tab(
+                    selected = tab == 0, onClick = { tab = 0 }, modifier = Modifier.height(TOUCH_HEIGHT),
+                    text = { Text(if (recording) "● 이번 주행" else "이번 주행", fontSize = 20.sp) },
+                )
+                Tab(
+                    selected = tab == 1, onClick = { tab = 1; openedTrip = null }, modifier = Modifier.height(TOUCH_HEIGHT),
+                    text = { Text("지난 기록 ${trips.size}", fontSize = 20.sp) },
+                )
             }
             Column(Modifier.padding(16.dp)) {
                 when {
@@ -218,16 +248,16 @@ private fun LogPanel(
                     else -> LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         items(trips, key = { it.startMs }) { trip ->
                             Column(
-                                Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp))
-                                    .background(DriveColors.Idle).clickable { openedTrip = trip }.padding(14.dp)
+                                Modifier.fillMaxWidth().heightIn(min = TOUCH_HEIGHT).clip(RoundedCornerShape(12.dp))
+                                    .background(DriveColors.Idle).clickable { openedTrip = trip }.padding(16.dp)
                             ) {
-                                Text(dateTime(trip.startMs) + "  ·  " + duration(trip), fontWeight = FontWeight.SemiBold)
+                                Text(dateTime(trip.startMs) + "  ·  " + duration(trip), fontWeight = FontWeight.SemiBold, fontSize = 18.sp)
                                 Text(
                                     "%.1f km · 브레이크 %d · 깜빡이 %d · 급가속 %d · 급감속 %d".format(
                                         trip.distanceKm, trip.brakeCount, trip.leftTurnCount + trip.rightTurnCount,
                                         trip.harshAccelCount, trip.harshBrakeCount,
                                     ),
-                                    color = DriveColors.Muted, fontSize = 14.sp,
+                                    color = DriveColors.Muted, fontSize = 16.sp,
                                 )
                             }
                         }
@@ -252,10 +282,12 @@ private fun TripDetail(
     }
     Column {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            TextButton(onClick = onBack) { Text("← 목록") }
-            Text(dateTime(trip.startMs), fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
-            TextButton(onClick = onShare) { Text("CSV 내보내기") }
-            TextButton(onClick = onDelete) { Text("삭제", color = DriveColors.Brake) }
+            TextButton(onClick = onBack, modifier = Modifier.height(TOUCH_HEIGHT)) { Text("← 목록", fontSize = 18.sp) }
+            Text(dateTime(trip.startMs), fontWeight = FontWeight.SemiBold, fontSize = 18.sp, modifier = Modifier.weight(1f))
+            TextButton(onClick = onShare, modifier = Modifier.height(TOUCH_HEIGHT)) { Text("CSV 내보내기", fontSize = 18.sp) }
+            TextButton(onClick = onDelete, modifier = Modifier.height(TOUCH_HEIGHT)) {
+                Text("삭제", color = DriveColors.Brake, fontSize = 18.sp)
+            }
         }
         SummaryRow(trip)
         Spacer(Modifier.height(12.dp))
@@ -281,8 +313,8 @@ private fun Stat(label: String, value: String, modifier: Modifier, highlight: Co
         modifier.clip(RoundedCornerShape(12.dp)).background(DriveColors.Idle).padding(10.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        Text(value, fontWeight = FontWeight.Bold, fontSize = 17.sp, color = highlight ?: Color.Unspecified)
-        Text(label, fontSize = 12.sp, color = DriveColors.Muted)
+        Text(value, fontWeight = FontWeight.Bold, fontSize = 20.sp, color = highlight ?: Color.Unspecified)
+        Text(label, fontSize = 15.sp, color = DriveColors.Muted)
     }
 }
 
@@ -296,25 +328,67 @@ private fun EventList(events: List<DriveEvent>) {
 @Composable
 private fun EventRow(e: DriveEvent) {
     Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
-        Text(time(e.timeMs), color = DriveColors.Muted, fontSize = 14.sp, modifier = Modifier.width(78.dp))
-        Box(Modifier.size(10.dp).clip(CircleShape).background(colorOf(e.type)))
-        Spacer(Modifier.width(10.dp))
-        Text(e.type.label, fontSize = 16.sp, modifier = Modifier.width(120.dp))
+        Text(time(e.timeMs), color = DriveColors.Muted, fontSize = 17.sp, modifier = Modifier.width(92.dp))
+        Box(Modifier.size(12.dp).clip(CircleShape).background(colorOf(e.type)))
+        Spacer(Modifier.width(12.dp))
+        Text(e.type.label, fontSize = 19.sp, modifier = Modifier.width(150.dp))
         val extra = buildList {
             e.speedKmh?.let { add("%.0f km/h".format(it)) }
             e.durationMs?.let { add("%.1f초 유지".format(it / 1000f)) }
             if (e.detail.isNotBlank()) add(e.detail)
         }.joinToString(" · ")
-        Text(extra, color = DriveColors.Muted, fontSize = 14.sp)
+        Text(extra, color = DriveColors.Muted, fontSize = 17.sp)
     }
 }
 
 @Composable
 private fun EmptyHint(text: String) {
     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-        Text(text, color = DriveColors.Muted, textAlign = TextAlign.Center)
+        Text(text, color = DriveColors.Muted, textAlign = TextAlign.Center, fontSize = 18.sp)
     }
 }
+
+/** 주행 중 오른쪽 화면: 읽을 거리를 줄이고 큰 숫자만 보여준다 */
+@Composable
+private fun DrivingPanel(summary: TripSummary?, modifier: Modifier) {
+    Surface(modifier, shape = RoundedCornerShape(20.dp), color = DriveColors.Panel) {
+        Column(
+            Modifier.fillMaxSize().padding(24.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp),
+        ) {
+            Text(if (summary != null) "● 기록 중" else "주행 중", fontSize = 24.sp, fontWeight = FontWeight.Bold)
+            if (summary != null) {
+                Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxWidth()) {
+                    BigStat("브레이크", "${summary.brakeCount}", Modifier.weight(1f))
+                    BigStat("깜빡이", "${summary.leftTurnCount + summary.rightTurnCount}", Modifier.weight(1f))
+                }
+                Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxWidth()) {
+                    BigStat("급가속", "${summary.harshAccelCount}", Modifier.weight(1f),
+                        if (summary.harshAccelCount > 0) DriveColors.Harsh else null)
+                    BigStat("급감속", "${summary.harshBrakeCount}", Modifier.weight(1f),
+                        if (summary.harshBrakeCount > 0) DriveColors.Harsh else null)
+                }
+            }
+            Spacer(Modifier.weight(1f))
+            Text("정차하면 상세 기록이 보여요", color = DriveColors.Muted, fontSize = 18.sp)
+        }
+    }
+}
+
+@Composable
+private fun BigStat(label: String, value: String, modifier: Modifier, highlight: Color? = null) {
+    Column(
+        modifier.clip(RoundedCornerShape(16.dp)).background(DriveColors.Idle).padding(vertical = 18.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Text(value, fontWeight = FontWeight.Bold, fontSize = 44.sp, color = highlight ?: Color.Unspecified)
+        Text(label, fontSize = 18.sp, color = DriveColors.Muted)
+    }
+}
+
+/** 차량 UI 권장 최소 터치 높이 */
+private val TOUCH_HEIGHT = 76.dp
+private const val DRIVING_KMH = 5f
 
 private fun colorOf(type: EventType): Color = when (type) {
     EventType.BRAKE_ON, EventType.BRAKE_OFF -> DriveColors.Brake

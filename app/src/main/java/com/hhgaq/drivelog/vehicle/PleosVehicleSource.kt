@@ -27,7 +27,7 @@ class PleosVehicleSource(
 
     private val brakeListener = object : BrakePedalStatusListener {
         override fun onBrakePedalStatusUpdated(status: Boolean?) {
-            report(SIGNAL_BRAKE, "수신 중")
+            if (status != null) report(SIGNAL_BRAKE, "수신 중")
             recorder.onBrake(status)
         }
 
@@ -39,7 +39,7 @@ class PleosVehicleSource(
 
     private val turnListener = object : TurnSignalStateListener {
         override fun onTurnSignalStateUpdated(state: TurnSignalValue?) {
-            report(SIGNAL_TURN, "수신 중")
+            if (state != null) report(SIGNAL_TURN, "수신 중")
             recorder.onTurn(state.toTurn())
         }
 
@@ -71,7 +71,10 @@ class PleosVehicleSource(
             )
             brake.registerBrakePedalStatus(brakeListener)
             brake.getCurrentBrakePedalStatus(
-                onComplete = { recorder.onBrake(it); report(SIGNAL_BRAKE, "수신 중") },
+                onComplete = {
+                    recorder.onBrake(it)
+                    report(SIGNAL_BRAKE, if (it != null) "수신 중" else "등록됨 (값 대기)")
+                },
                 onFailed = { Log.w(TAG, "brake get failed", it) },
             )
         }.onFailure { report(SIGNAL_BRAKE, "등록 실패: ${it.message}") }
@@ -84,7 +87,10 @@ class PleosVehicleSource(
             )
             turn.registerTurnSignalState(turnListener)
             turn.getCurrentTurnSignalState(
-                onComplete = { recorder.onTurn(it.toTurn()); report(SIGNAL_TURN, "수신 중") },
+                onComplete = {
+                    recorder.onTurn(it.toTurn())
+                    report(SIGNAL_TURN, if (it != null) "수신 중" else "등록됨 (값 대기)")
+                },
                 onFailed = { Log.w(TAG, "turn get failed", it) },
             )
         }.onFailure { report(SIGNAL_TURN, "등록 실패: ${it.message}") }

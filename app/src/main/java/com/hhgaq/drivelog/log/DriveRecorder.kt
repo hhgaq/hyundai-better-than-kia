@@ -41,6 +41,17 @@ class DriveRecorder(
 
     data class Trip(val events: List<DriveEvent>, val summary: TripSummary)
 
+    /** 신호 출처. 가상 주행 중에는 실제 차량 신호를 무시해서 두 입력이 섞이지 않게 한다 */
+    enum class Input { REAL, DEMO }
+
+    /** 가상 주행이 끝나면 되돌릴 마지막 실제 신호 값 */
+    private var realBrake: Boolean? = null
+    private var realTurn: Turn? = null
+    private var realGear: String? = null
+    private var realPedal: Float? = null
+    var isDemoActive = false
+        private set
+
     private var state = LiveState()
 
     private var brakeSinceMs: Long? = null
@@ -72,6 +83,11 @@ class DriveRecorder(
     fun currentSummary(): TripSummary? =
         if (isRecording) TripSummary.from(tripEvents, tripStartMs, null, distanceM / 1000.0, maxSpeedKmh) else null
 
+    /** 기록 중인 주행의 현재까지 내용 (중간 저장용, endMs 없음) */
+    @Synchronized
+    fun snapshot(): Trip? =
+        if (isRecording) Trip(tripEvents.toList(), currentSummary()!!) else null
+
     // ---------------------------------------------------------------- trip
 
     @Synchronized
@@ -84,7 +100,64 @@ class DriveRecorder(
         tripStartMs = clock()
         isRecording = true
         emit(EventType.TRIP_START)
+
+        // 기록 시작 전부터 밟고 있던 브레이크·켜져 있던 깜빡이·진행 중인 가속은
+        // 시작 시각 기준으로 켬 이벤트를 남겨서 횟수와 유지 시간이 맞게 한다
+        val now = tripStartMs
+        if (state.brake == true) {
+            brakeSinceMs = now
+            emit(EventType.BRAKE_ON, detail = ALREADY_ON)
+        }
+        when (state.turn) {
+            Turn.LEFT -> { turnSinceMs = now; emit(EventType.TURN_LEFT, detail = ALREADY_ON) }
+            Turn.RIGHT -> { turnSinceMs = now; emit(EventType.TURN_RIGHT, detail = ALREADY_ON) }
+            else -> {}
+        }
+        if (state.accelerating) {
+            accelSinceMs = now
+            emit(EventType.ACCEL_ON, detail = ALREADY_ON)
+        }
     }
+
+    /** 가상 주행 시작: 이 시점부터 실제 신호는 기록에 반영하지 않는다 */
+    @Synchronized
+    fun beginDemo() {
+        if (isDemoActive) return
+        isDemoActive = true
+        speedSamples.clear()
+        lastDistSample = null
+        pedalAvailable = false  // 가상 주행은 속도로 가속을 판단한다
+        brakeSinceMs = null
+        turnSinceMs = null
+        accelSinceMs = null
+        update(LiveState())     // 가상 주행은 빈 상태에서 시작한다
+    }
+
+    /** 가상 주행 끝: 가속도 창을 비우고 마지막 실제 신호 값으로 되돌린다 */
+    @Synchronized
+    fun endDemo() {
+        if (!isDemoActive) return
+        isDemoActive = false
+        speedSamples.clear()
+        lastDistSample = null
+        brakeSinceMs = null
+        turnSinceMs = null
+        accelSinceMs = null
+        pedalAvailable = realPedal != null
+        // 이벤트 없이 상태만 되돌린다. 속도는 다음 실제 샘플이 오면 채워진다
+        update(
+            LiveState(
+                brake = realBrake,
+                turn = realTurn,
+                gear = realGear,
+                pedalPercent = realPedal,
+                accelSource = if (pedalAvailable) AccelSource.PEDAL else AccelSource.NONE,
+            )
+        )
+    }
+
+    private fun accept(input: Input): Boolean =
+        if (input == Input.REAL) !isDemoActive else isDemoActive
 
     @Synchronized
     fun stopTrip(): Trip? {
@@ -98,7 +171,14 @@ class DriveRecorder(
     // ---------------------------------------------------------------- signals
 
     @Synchronized
-    fun onBrake(pressed: Boolean?) {
+    fun onBrake(pressed: Boolean?, input: Input = Input.REAL) {
+        if (input == Input.REAL && pressed != null) realBrake = pressed
+        if (accept(input)) applyBrake(pressed)
+    }
+
+    /** null(신호 끊김)은 뗌으로 보지 않고 무시한다 */
+    private fun applyBrake(pressed: Boolean?) {
+        if (pressed == null) return
         val prev = state.brake
         if (pressed == prev) return
         update(state.copy(brake = pressed))
@@ -113,7 +193,13 @@ class DriveRecorder(
     }
 
     @Synchronized
-    fun onTurn(turn: Turn?) {
+    fun onTurn(turn: Turn?, input: Input = Input.REAL) {
+        if (input == Input.REAL && turn != null) realTurn = turn
+        if (accept(input)) applyTurn(turn)
+    }
+
+    private fun applyTurn(turn: Turn?) {
+        if (turn == null) return
         val prev = state.turn
         if (turn == prev) return
         update(state.copy(turn = turn))
@@ -123,7 +209,7 @@ class DriveRecorder(
                 turnSinceMs = now
                 emit(if (turn == Turn.LEFT) EventType.TURN_LEFT else EventType.TURN_RIGHT)
             }
-            Turn.OFF, null -> if (prev == Turn.LEFT || prev == Turn.RIGHT) {
+            Turn.OFF -> if (prev == Turn.LEFT || prev == Turn.RIGHT) {
                 emit(
                     EventType.TURN_OFF,
                     durationMs = turnSinceMs?.let { now - it },
@@ -135,17 +221,24 @@ class DriveRecorder(
     }
 
     @Synchronized
-    fun onGear(gear: String?) {
-        if (gear == state.gear) return
+    fun onGear(gear: String?, input: Input = Input.REAL) {
+        if (input == Input.REAL && gear != null) realGear = gear
+        if (accept(input)) applyGear(gear)
+    }
+
+    private fun applyGear(gear: String?) {
+        if (gear == null || gear == state.gear) return
         val prev = state.gear
         update(state.copy(gear = gear))
-        if (gear != null) emit(EventType.GEAR, detail = if (prev == null) gear else "$prev → $gear")
+        emit(EventType.GEAR, detail = if (prev == null) gear else "$prev → $gear")
     }
 
     /** 가속 페달 밟힘 정도(0~100%). 이 값이 한 번이라도 오면 가속 판단은 페달 기준으로 바뀐다 */
     @Synchronized
-    fun onAcceleratorPedal(percent: Float?) {
+    fun onAcceleratorPedal(percent: Float?, input: Input = Input.REAL) {
         if (percent == null) return
+        if (input == Input.REAL) realPedal = percent
+        if (!accept(input)) return
         pedalAvailable = true
         val on = when {
             percent >= config.pedalOnPercent -> true
@@ -158,8 +251,8 @@ class DriveRecorder(
 
     /** 차량 속도 (m/s). 후진 시 음수가 올 수 있어 절댓값을 쓴다 */
     @Synchronized
-    fun onSpeed(speedMs: Float?) {
-        if (speedMs == null) return
+    fun onSpeed(speedMs: Float?, input: Input = Input.REAL) {
+        if (speedMs == null || !accept(input)) return
         val now = clock()
         val v = abs(speedMs)
         val kmh = v * 3.6f
@@ -179,7 +272,12 @@ class DriveRecorder(
         }
         val (t0, v0) = speedSamples.first()
         val span = now - t0
-        val accel = if (span >= config.accelMinSpanMs) (v - v0) / (span / 1000f) else null
+        // 샘플이 드물어 구간이 창의 2배를 넘으면 가속도를 계산하지 않는다
+        val accel = if (span >= config.accelMinSpanMs && span <= config.accelWindowMs * 2) {
+            (v - v0) / (span / 1000f)
+        } else {
+            null
+        }
 
         update(
             state.copy(
@@ -217,6 +315,10 @@ class DriveRecorder(
     }
 
     // ---------------------------------------------------------------- internals
+
+    private companion object {
+        const val ALREADY_ON = "기록 시작 때 이미 켜짐"
+    }
 
     private fun setAccelerating(on: Boolean, detail: String) {
         if (on == state.accelerating) return

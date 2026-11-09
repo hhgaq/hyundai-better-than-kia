@@ -114,4 +114,84 @@ class DriveRecorderTest {
         assertEquals(1, s.rightTurnCount)
         assertEquals(EventType.TRIP_END, events.last().type)
     }
+
+    @Test
+    fun brakeAlreadyPressedWhenTripStartsCountsFromStart() {
+        recorder.onBrake(true)
+        advance(10_000)                  // 기록 전 10초 동안 밟고 있음
+        recorder.startTrip()
+        advance(2000)
+        recorder.onBrake(false)
+        assertEquals(listOf(EventType.TRIP_START, EventType.BRAKE_ON, EventType.BRAKE_OFF), types())
+        assertEquals(2000L, events.last().durationMs)
+        val s = recorder.stopTrip()!!.summary
+        assertEquals(1, s.brakeCount)
+        assertEquals(2000L, s.brakeTotalMs)
+    }
+
+    @Test
+    fun turnSignalAlreadyOnWhenTripStarts() {
+        recorder.onTurn(Turn.LEFT)
+        advance(5000)
+        recorder.startTrip()
+        advance(1000)
+        recorder.onTurn(Turn.OFF)
+        assertEquals(listOf(EventType.TRIP_START, EventType.TURN_LEFT, EventType.TURN_OFF), types())
+        assertEquals(1000L, events.last().durationMs)
+    }
+
+    @Test
+    fun signalLossIsNotTreatedAsRelease() {
+        recorder.startTrip()
+        recorder.onBrake(true)
+        recorder.onBrake(null)
+        recorder.onTurn(Turn.RIGHT)
+        recorder.onTurn(null)
+        assertEquals(listOf(EventType.TRIP_START, EventType.BRAKE_ON, EventType.TURN_RIGHT), types())
+        assertEquals(true, recorder.currentState().brake)
+    }
+
+    @Test
+    fun realSignalsAreIgnoredDuringDemo() {
+        val demo = DriveRecorder.Input.DEMO
+        recorder.onGear("D")
+        recorder.beginDemo()
+        recorder.startTrip()
+        // 가상 주행 속도와 실제 속도(0)가 번갈아 들어와도 실제 값은 무시되어야 한다
+        for (i in 1..30) {
+            advance(100)
+            recorder.onSpeed((i * 1.0f) / 3.6f, demo)   // 1초에 10 km/h씩 완만한 가속
+            recorder.onSpeed(0f)                         // 실제 신호: 무시
+            recorder.onBrake(true)                       // 실제 신호: 무시
+        }
+        assertTrue(EventType.HARSH_ACCEL !in types())
+        assertTrue(EventType.HARSH_BRAKE !in types())
+        assertTrue(EventType.BRAKE_ON !in types())
+        assertEquals(30f, recorder.currentState().speedKmh!!, 0.1f)
+
+        recorder.stopTrip()
+        recorder.endDemo()
+        // 가상 주행이 끝나면 마지막 실제 값으로 돌아온다
+        assertEquals(true, recorder.currentState().brake)
+        assertEquals("D", recorder.currentState().gear)
+        assertEquals(null, recorder.currentState().speedKmh)
+    }
+
+    @Test
+    fun sparseSpeedSamplesDoNotProduceAcceleration() {
+        recorder.startTrip()
+        recorder.onSpeed(0f)
+        advance(5000)
+        recorder.onSpeed(50f / 3.6f)     // 5초 만에 온 다음 샘플
+        assertEquals(null, recorder.currentState().accelMs2)
+    }
+
+    @Test
+    fun snapshotHasNoEndTime() {
+        recorder.startTrip()
+        recorder.onBrake(true)
+        val snap = recorder.snapshot()!!
+        assertEquals(null, snap.summary.endMs)
+        assertEquals(1, snap.summary.brakeCount)
+    }
 }

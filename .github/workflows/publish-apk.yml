@@ -12,6 +12,11 @@ on:
 permissions:
   contents: write
 
+# 연속 푸시 시 앞선 빌드를 취소하고 마지막 것만 커밋한다
+concurrency:
+  group: publish-apk
+  cancel-in-progress: true
+
 jobs:
   publish:
     runs-on: ubuntu-latest
@@ -40,5 +45,6 @@ jobs:
             echo "APK 변경 없음"
           else
             git commit -m "APK 빌드 v${VERSION} (${GITHUB_SHA::7})"
-            git push
+            git pull --rebase origin main
+            git push origin HEAD:main
           fi

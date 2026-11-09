@@ -29,10 +29,13 @@ class CarPropertySource(
     private var car: Car? = null
     private var manager: CarPropertyManager? = null
     private val subscribed = mutableSetOf<Int>()
+    /** 실제 값을 한 번이라도 받은 속성. 이때 비로소 "수신 중"으로 표시한다 */
+    private val received = java.util.Collections.synchronizedSet(mutableSetOf<Int>())
 
     private val callback = object : CarPropertyManager.CarPropertyEventCallback {
         override fun onChangeEvent(value: CarPropertyValue<*>) {
             if (value.status != CarPropertyValue.STATUS_AVAILABLE) return
+            if (received.add(value.propertyId)) nameOf(value.propertyId)?.let { report(it, "수신 중") }
             when (value.propertyId) {
                 VehiclePropertyIds.PERF_VEHICLE_SPEED -> recorder.onSpeed(value.value as? Float)
                 VehiclePropertyIds.GEAR_SELECTION -> recorder.onGear(gearName(value.value as? Int))
@@ -64,6 +67,7 @@ class CarPropertySource(
     fun stop() {
         runCatching { manager?.unregisterCallback(callback) }
         subscribed.clear()
+        received.clear()
         runCatching { car?.disconnect() }
         car = null
         manager = null
@@ -115,7 +119,7 @@ class CarPropertySource(
         }
         if (ok) {
             subscribed += propertyId
-            report(name, "수신 중")
+            if (propertyId !in received) report(name, "등록됨 (값 대기)")
         } else {
             report(name, "등록 실패")
         }
