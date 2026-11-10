@@ -6,10 +6,12 @@
 ## 제출물
 
 - 소스 코드: 이 저장소 전체
-- APK: [`apk/`](apk/) 폴더의 `drive-log-v<버전>-debug.apk`. `main` 브랜치에 푸시할 때마다 GitHub Actions가 테스트를 돌리고 빌드해서 자동으로 커밋합니다. `apk/SHA256SUMS.txt`로 파일이 맞는지 확인할 수 있습니다.
-- 설치: Pleos Connect 에뮬레이터를 켠 상태에서 `adb install -r apk/drive-log-v*-debug.apk`
-  - 저장소에 고정된 디버그 키로 서명해서, 새 빌드를 이전 설치 위에 바로 덮어쓸 수 있습니다.
-  - v0.1.0을 설치했던 경우에만 서명 키가 달라서 한 번 `adb uninstall com.hhgaq.drivelog` 후 설치하세요.
+- APK: [`apk/`](apk/) 폴더의 `<팀명>_<앱이름>_release.apk` (release 빌드)
+  - `main` 브랜치에 푸시할 때마다 GitHub Actions가 테스트 후 release APK를 빌드해서 자동으로 커밋합니다.
+  - `apk/SHA256SUMS.txt`로 파일이 맞는지 확인할 수 있습니다.
+  - 팀명·앱 이름은 `gradle.properties`의 `submission.teamName`, `submission.appName`에서 바꿉니다.
+- 설치: Pleos Connect 에뮬레이터를 켠 상태에서 `adb install -r apk/<파일명>.apk`
+  - 이전에 debug APK를 설치했다면 서명 키가 달라서 먼저 `adb uninstall com.hhgaq.drivelog` 후 설치하세요.
 
 ## 기능
 

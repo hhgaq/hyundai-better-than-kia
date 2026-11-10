@@ -32,10 +32,20 @@ android {
             keyAlias = "androiddebugkey"
             keyPassword = "android"
         }
+        // 공모전 제출용 release 서명 키. 심사·시연용이며 Pleos App Market 배포 키가 아니다.
+        // 마켓 배포 시에는 저장소 밖에서 관리하는 별도 키로 교체한다.
+        create("submission") {
+            storeFile = file("submission.keystore")
+            storePassword = "drivelog-submission"
+            keyAlias = "submission"
+            keyPassword = "drivelog-submission"
+        }
     }
 
     buildTypes {
         release {
+            signingConfig = signingConfigs.getByName("submission")
+            // Vehicle SDK가 kotlin-reflect·Gson을 쓰므로 keep 규칙 확인 전까지 축소하지 않는다
             isMinifyEnabled = false
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
         }

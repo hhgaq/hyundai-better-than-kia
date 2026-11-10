@@ -29,14 +29,17 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
       - name: Unit tests
         run: ./gradlew --no-daemon testDebugUnitTest
-      - name: Build debug APK
-        run: ./gradlew --no-daemon assembleDebug
+      - name: Build release APK
+        run: ./gradlew --no-daemon assembleRelease
       - name: Commit APK
         run: |
+          # 제출 규정: apk/ 폴더, 파일명 <팀명>_<앱이름>_release.apk
           VERSION=$(grep -oP 'versionName = "\K[^"]+' app/build.gradle.kts)
+          TEAM=$(grep -oP '^submission.teamName=\K.*' gradle.properties)
+          APP=$(grep -oP '^submission.appName=\K.*' gradle.properties)
           mkdir -p apk
           rm -f apk/*.apk
-          cp app/build/outputs/apk/debug/app-debug.apk "apk/drive-log-v${VERSION}-debug.apk"
+          cp app/build/outputs/apk/release/app-release.apk "apk/${TEAM}_${APP}_release.apk"
           ( cd apk && sha256sum *.apk > SHA256SUMS.txt )
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
