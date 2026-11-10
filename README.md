@@ -1,4 +1,4 @@
-# 드라이브 로그 (Drive Log)
+# 나의운전저장소
 
 운전자의 **브레이크, 가속(엑셀), 방향지시등(깜빡이)** 입력을 실시간으로 인식해 주행 기록으로 남기는 Pleos Connect 차량용 앱입니다.
 현대자동차그룹 차량용 앱 개발 공모전 제출용 MVP입니다.
@@ -6,11 +6,11 @@
 ## 제출물
 
 - 소스 코드: 이 저장소 전체
-- APK: [`apk/`](apk/) 폴더의 `<팀명>_<앱이름>_release.apk` (release 빌드)
+- APK: [`apk/`](apk/) 폴더의 `세교동세얼간이_나의운전저장소_release.apk` (release 빌드)
   - `main` 브랜치에 푸시할 때마다 GitHub Actions가 테스트 후 release APK를 빌드해서 자동으로 커밋합니다.
   - `apk/SHA256SUMS.txt`로 파일이 맞는지 확인할 수 있습니다.
   - 팀명·앱 이름은 `gradle.properties`의 `submission.teamName`, `submission.appName`에서 바꿉니다.
-- 설치: Pleos Connect 에뮬레이터를 켠 상태에서 `adb install -r apk/<파일명>.apk`
+- 설치: Pleos Connect 에뮬레이터를 켠 상태에서 `adb install -r apk/세교동세얼간이_나의운전저장소_release.apk`
   - 이전에 debug APK를 설치했다면 서명 키가 달라서 먼저 `adb uninstall com.hhgaq.drivelog` 후 설치하세요.
 
 ## 기능

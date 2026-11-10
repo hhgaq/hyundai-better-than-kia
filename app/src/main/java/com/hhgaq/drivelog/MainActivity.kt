@@ -59,7 +59,7 @@ class MainActivity : ComponentActivity() {
         }
         val intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.fromParts("package", packageName, null))
         runCatching { startActivity(intent) }.onFailure {
-            Toast.makeText(this, "설정에서 '드라이브 로그'의 차량 속도 권한을 허용해 주세요", Toast.LENGTH_LONG).show()
+            Toast.makeText(this, "설정에서 '나의운전저장소'의 차량 속도 권한을 허용해 주세요", Toast.LENGTH_LONG).show()
         }
     }
 
@@ -67,7 +67,7 @@ class MainActivity : ComponentActivity() {
     private fun shareCsv(startMs: Long) {
         val send = Intent(Intent.ACTION_SEND).apply {
             type = "text/plain"
-            putExtra(Intent.EXTRA_SUBJECT, "드라이브 로그 $startMs")
+            putExtra(Intent.EXTRA_SUBJECT, "나의운전저장소 $startMs")
             putExtra(Intent.EXTRA_TEXT, repository.tripCsv(startMs))
         }
         val canShare = send.resolveActivity(packageManager) != null
