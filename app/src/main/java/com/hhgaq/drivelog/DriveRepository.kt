@@ -64,7 +64,7 @@ class DriveRepository(context: Context) {
 
     @Volatile private var lastSummaryMs = 0L
 
-    private val recorder = DriveRecorder(listener = object : DriveRecorder.Listener {
+    private val recorder: DriveRecorder = DriveRecorder(config = DriveRecorder.Config(autoTrip = true), listener = object : DriveRecorder.Listener {
         override fun onLiveState(state: LiveState) {
             _live.value = state
             // 속도는 초당 10번 오므로 요약(거리·최고 속도)은 1초에 한 번만 다시 계산한다
@@ -76,6 +76,10 @@ class DriveRepository(context: Context) {
             _events.update { it + event }
             refreshSummary(System.currentTimeMillis())
         }
+
+        override fun onAutoTripStarted() = onTripStarted()
+
+        override fun onAutoTripStopped(trip: DriveRecorder.Trip) = onTripFinished(trip)
     })
 
     private val report: (String, String) -> Unit = { signal, status ->
@@ -101,16 +105,17 @@ class DriveRepository(context: Context) {
     fun startTrip() {
         if (_recording.value) return
         recorder.startTrip()
+        onTripStarted()
+    }
+
+    private fun onTripStarted() {
         _events.value = recorder.currentEvents()
-        refreshSummary(System.currentTimeMillis())
         _recording.value = true
+        refreshSummary(System.currentTimeMillis())
         startAutosave()
     }
 
-    fun stopTrip() {
-        val trip = recorder.stopTrip()
-        if (demo.isRunning || recorder.isDemoActive) stopDemoInternal()
-        if (trip == null) return
+    private fun onTripFinished(trip: DriveRecorder.Trip) {
         autosaveJob?.cancel()
         _recording.value = false
         _events.value = trip.events
@@ -119,6 +124,13 @@ class DriveRepository(context: Context) {
             store.save(trip)
             _trips.value = store.list()
         }
+    }
+
+    fun stopTrip() {
+        val trip = recorder.stopTrip()
+        if (demo.isRunning || recorder.isDemoActive) stopDemoInternal()
+        if (trip == null) return
+        onTripFinished(trip)
     }
 
     /** 가상 주행: 실제 신호를 잠시 무시하고 새 기록을 시작한다. 시나리오가 끝나면 기록도 끝낸다 */

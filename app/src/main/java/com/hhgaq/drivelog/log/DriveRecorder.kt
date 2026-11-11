@@ -16,6 +16,10 @@ class DriveRecorder(
     interface Listener {
         fun onLiveState(state: LiveState)
         fun onEvent(event: DriveEvent)
+        /** 기어가 P에서 벗어나 기록이 자동으로 시작됨 */
+        fun onAutoTripStarted() {}
+        /** 기어가 P로 돌아와 기록이 자동으로 끝남 */
+        fun onAutoTripStopped(trip: Trip) {}
     }
 
     data class Config(
@@ -37,6 +41,8 @@ class DriveRecorder(
         val pedalOnPercent: Float = 5f,
         /** 페달 뗌 판단 (%) */
         val pedalOffPercent: Float = 2f,
+        /** 기어가 P에서 벗어나면 기록을 자동으로 시작하고, P로 돌아오면 끝낸다 */
+        val autoTrip: Boolean = false,
     )
 
     data class Trip(val events: List<DriveEvent>, val summary: TripSummary)
@@ -230,7 +236,18 @@ class DriveRecorder(
         if (gear == null || gear == state.gear) return
         val prev = state.gear
         update(state.copy(gear = gear))
+
+        // 자동 기록: 가상 주행 중에는 적용하지 않는다
+        val auto = config.autoTrip && !isDemoActive
+        if (auto && gear != GEAR_PARK && !isRecording) {
+            startTrip()
+            listener.onAutoTripStarted()
+        }
         emit(EventType.GEAR, detail = if (prev == null) gear else "$prev → $gear")
+        // 주행하다가 P에 넣었을 때만 끝낸다 (앱을 켠 직후 처음 받은 P 값에는 끝내지 않음)
+        if (auto && gear == GEAR_PARK && prev != null && prev != GEAR_PARK && isRecording) {
+            stopTrip()?.let { listener.onAutoTripStopped(it) }
+        }
     }
 
     /** 가속 페달 밟힘 정도(0~100%). 이 값이 한 번이라도 오면 가속 판단은 페달 기준으로 바뀐다 */
@@ -318,6 +335,7 @@ class DriveRecorder(
 
     private companion object {
         const val ALREADY_ON = "기록 시작 때 이미 켜짐"
+        const val GEAR_PARK = "P"
     }
 
     private fun setAccelerating(on: Boolean, detail: String) {

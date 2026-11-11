@@ -230,7 +230,7 @@ private fun LogPanel(
                 when {
                     tab == 0 -> {
                         if (summary == null && events.isEmpty()) {
-                            EmptyHint("기록 시작을 누르면 브레이크·가속·깜빡이 입력이 시간순으로 쌓입니다.\n차량 입력이 없으면 가상 주행으로 확인해 보세요.")
+                            EmptyHint("기어를 P에서 옮기면 자동으로 기록을 시작하고, P에 넣으면 저장합니다.\n브레이크·가속·깜빡이 입력이 시간순으로 쌓입니다.\n차량 입력이 없으면 가상 주행으로 확인해 보세요.")
                         } else {
                             summary?.let { SummaryRow(it) }
                             Spacer(Modifier.height(12.dp))

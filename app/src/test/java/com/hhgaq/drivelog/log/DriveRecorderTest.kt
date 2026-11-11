@@ -194,4 +194,61 @@ class DriveRecorderTest {
         assertEquals(null, snap.summary.endMs)
         assertEquals(1, snap.summary.brakeCount)
     }
+
+    private fun autoRecorder(started: MutableList<Long>, stopped: MutableList<DriveRecorder.Trip>) = DriveRecorder(
+        clock = { now },
+        config = DriveRecorder.Config(autoTrip = true),
+        listener = object : DriveRecorder.Listener {
+            override fun onLiveState(state: LiveState) {}
+            override fun onEvent(event: DriveEvent) { events += event }
+            override fun onAutoTripStarted() { started += now }
+            override fun onAutoTripStopped(trip: DriveRecorder.Trip) { stopped += trip }
+        },
+    )
+
+    @Test
+    fun autoTripStartsWhenLeavingParkAndStopsOnPark() {
+        val started = mutableListOf<Long>(); val stopped = mutableListOf<DriveRecorder.Trip>()
+        val r = autoRecorder(started, stopped)
+        r.onGear("P")                    // 앱을 켠 직후 첫 값: 아무 일도 없음
+        assertTrue(events.isEmpty())
+        r.onGear("D")
+        assertEquals(1, started.size)
+        assertEquals(listOf(EventType.TRIP_START, EventType.GEAR), types())
+        assertEquals("P → D", events.last().detail)
+        r.onBrake(true); advance(1000); r.onBrake(false)
+        r.onGear("R")                    // 주행 기어 사이 변경은 기록만
+        assertEquals(0, stopped.size)
+        r.onGear("P")
+        assertEquals(1, stopped.size)
+        assertEquals(EventType.TRIP_END, events.last().type)
+        assertEquals(1, stopped[0].summary.brakeCount)
+        assertEquals(false, r.isRecording)
+    }
+
+    @Test
+    fun autoTripStartsIfAppOpensWhileDriving() {
+        val started = mutableListOf<Long>(); val stopped = mutableListOf<DriveRecorder.Trip>()
+        val r = autoRecorder(started, stopped)
+        r.onGear("D")
+        assertEquals(1, started.size)
+        assertEquals(true, r.isRecording)
+    }
+
+    @Test
+    fun autoTripDoesNotInterfereWithDemoOrManualStartInPark() {
+        val started = mutableListOf<Long>(); val stopped = mutableListOf<DriveRecorder.Trip>()
+        val r = autoRecorder(started, stopped)
+        r.startTrip()                    // P에서 직접 시작
+        r.onGear("P")                    // 첫 기어 값이 P여도 끝내지 않음
+        assertEquals(true, r.isRecording)
+        r.stopTrip()
+
+        r.beginDemo(); r.startTrip()
+        r.onGear("D", DriveRecorder.Input.DEMO)
+        r.onGear("P", DriveRecorder.Input.DEMO)
+        assertEquals(true, r.isRecording)    // 가상 주행은 시나리오가 끝낼 때까지 유지
+        assertEquals(0, started.size)
+        assertEquals(0, stopped.size)
+    }
 }
